@@ -27,7 +27,7 @@
 	// page
 	qa_register_plugin_module('page', 'q2apro-quickedit-page.php', 'q2apro_quickedit', 'Quick-Edit Page');
 	// page
-//	qa_register_plugin_module('page', 'q2apro-quickeditcat-page.php', 'q2apro_quickeditcat', 'Quick-Edit Cat Page');
+	qa_register_plugin_module('page', 'q2apro-quickeditcat-page.php', 'q2apro_quickeditcat', 'Quick-Edit Cat Page');
 	//ajax page
 	qa_register_plugin_module('page', 'q2apro-quickedit-ajax-page.php', 'q2apro_quickedit_ajax', 'Quick-Edit Ajax Page');
 
