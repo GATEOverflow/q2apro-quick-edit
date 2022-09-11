@@ -1,0 +1,14 @@
+{
+  "name": "Quick Edit",
+  "uri": "https://github.com/GATEOverflow/q2apro-quick-edit",
+  "description": "Update all question titles and tags quickly on one page and save hours of time",
+  "version": "1.1",
+  "date": "2021-09-11",
+  "author": "q2apro.com",
+  "author_uri": "http://www.q2apro.com",
+  "license": "",
+  "update_uri": "https://raw.githubusercontent.com/GATEOverflow/q2apro-quick-edit/master/metadata.json",
+  "min_q2a": "1.5",
+  "min_php": "5.1.6",
+  "load_order": "after_db_init"
+}
