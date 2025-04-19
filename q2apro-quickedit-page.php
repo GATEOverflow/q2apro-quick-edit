@@ -85,14 +85,27 @@ class q2apro_quickedit {
 				'value' => "",
 			);
 		}
-			$fields[] = array(
-				'label' => 'Convert image to text',
-				'note' => 'If checked will try to append the image text to question content',
-				'type'=>'checkbox',
-				'tags' => "id='ocr' name='ocr' class='col'",
-				'value' => "",
-			);
-		
+		$fields[] = array(
+			'label' => 'Convert image to text',
+			'note' => 'If checked will try to append the image text to question content',
+			'type'=>'checkbox',
+			'tags' => "id='ocr' name='ocr' class='col'",
+			'value' => "",
+		);
+		$fields[] = array(
+			'label' => 'Update tags using openai',
+			'note' => 'If checked will update the question tags using openai',
+			'type'=>'checkbox',
+			'tags' => "id='openai_tagging' name='openai_tagging' class='col'",
+			'value' => "",
+		);
+		$fields[] = array(
+			'label' => 'Minimum number of tags to exclude questions',
+			'type'=>'number',
+			'tags' => "id='min_tags' name='min_tags'",
+			'value' => '3',
+		);
+
 
 		$ok = qa_get('ok')?qa_get('ok'):null;
 
@@ -114,6 +127,68 @@ class q2apro_quickedit {
 
 
 	}
+
+	function openai_process_post($postid, $content, $title, $tags) {
+
+		$message = array();
+		$message['title'] = $title;
+		$message['tags'] = $tags;
+		$message['content'] = $content;
+		$newtags = qa_tag_review_call_openai($message);
+		if($newtags && ($newtags !== $tags) && ($newtags != '')) {
+			$newtags = preg_replace('/^.*?:/', '', $newtags);
+			if($tags) {
+				$newtags = $tags.','.$newtags;
+			}
+			qa_db_query_sub(
+				'INSERT INTO ^tag_suggestions (postid, suggested_tags, created) VALUES (#, $, NOW())',
+					$postid, $newtags
+			);
+			//file_put_contents("/tmp/openaiout.txt", "quickedit ".$title."..".$newtags, FILE_APPEND | LOCK_EX);
+			qa_post_set_content($postid, null, null, null, $newtags, null,null, qa_get_logged_in_userid(), null, null);
+			
+			$query=" select postid from ^posts where postid in (select postid from ^posts where categoryid is null or categoryid in(select categoryid from ^categories where title like 'Others' or title like 'Unknown Category' or title like 'new' )) and postid = #";// and categoryid =6";
+			$result = qa_db_read_one_value(qa_db_query_sub($query, $postid), true);
+			if($result) {
+				//echo $result;
+				$newtag = qa_tag_review_call_openai($message, true);//update category
+				if($newtag) {
+				$newtag = preg_replace('/^.*?:/', '', $newtag);
+				//echo($newtag);
+				$query = "select categoryid from ^categories where tags = $";
+				$categoryid = qa_db_read_one_value(qa_db_query_sub($query, $newtag), true);
+				if($categoryid) {
+					//echo $categoryid;
+					qa_post_set_category($postid, $categoryid,qa_get_logged_in_userid());
+			
+				}
+				}
+			}
+			
+		}
+	}
+
+	function openai_process_tags($tag, $min_tags) {
+		$num_commas = $min_tags - 1;
+		$query = "select b.postid,b.content,b.tags,b.title from ^posttags a,^posts b  where a.postid = b.postid and wordid = (select wordid from ^words WHERE  word = '".qa_strtolower($tag)."')  AND LENGTH(b.tags) - LENGTH(REPLACE(b.tags, ',', '')) < $num_commas  ";
+		//      error_log($query);
+
+		$result = qa_db_query_sub($query);
+		$posts = qa_db_read_all_assoc($result);
+		$count = 0;
+		foreach ($posts as $post) {
+			$postid = $post['postid'];
+			$content = $post['content'];
+			$title = $post['title'];
+			$tags = $post['tags'];
+			$this-> openai_process_post($postid, $content, $title, $tags);
+			sleep(1);
+			$count++;
+			//if($count > 10) break;
+		}
+		return $count;
+	}
+
 
 	function process_submit_ocr($tag) {
 		mathpix_process_ocr($tag, true);
@@ -140,25 +215,26 @@ class q2apro_quickedit {
 		}
 
 		// Block known script/bot user agents
-$user_agent = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
-if (
-    strpos($user_agent, 'curl') !== false ||
-    strpos($user_agent, 'wget') !== false ||
-    strpos($user_agent, 'python') !== false ||
-    strpos($user_agent, 'bot') !== false ||
-    strpos($user_agent, 'scrapy') !== false ||
-    strpos($user_agent, 'postman') !== false ||
-    strpos($user_agent, 'httpclient') !== false
-) {
-    $qa_content = qa_content_prepare();
-    $qa_content['error'] = '<div>Access blocked for automated scripts or bots.</div>';
-    return $qa_content;
-}
+		$user_agent = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
+		if (
+			strpos($user_agent, 'curl') !== false ||
+			strpos($user_agent, 'wget') !== false ||
+			strpos($user_agent, 'python') !== false ||
+			strpos($user_agent, 'bot') !== false ||
+			strpos($user_agent, 'scrapy') !== false ||
+			strpos($user_agent, 'postman') !== false ||
+			strpos($user_agent, 'httpclient') !== false
+		) {
+			$qa_content = qa_content_prepare();
+			$qa_content['error'] = '<div>Access blocked for automated scripts or bots.</div>';
+			return $qa_content;
+		}
 
 		$userid = qa_get_logged_in_userid();
 		$userlevel = qa_get_logged_in_level();
 		$c = 2;
 		$ocr=(bool)qa_post_text('ocr') ;
+		$openai_tagging=(bool)qa_post_text('openai_tagging') ;
 		$force=(bool)qa_post_text('force') && $userlevel >= QA_USER_LEVEL_SUPER ;
 		$qa_content=qa_content_prepare();
 		if (qa_clicked('changesubmit'))
@@ -206,7 +282,13 @@ if (
 		if($ocr) {
 			$tag = qa_post_text('tagstring');
 			if($tag)
-			$this -> process_submit_ocr($tag);
+				$this -> process_submit_ocr($tag);
+		}
+		if($openai_tagging) {
+			$tag = qa_post_text('tagstring');
+			$min_tags = qa_post_text('min_tags');
+			if($tag)
+				$this -> openai_process_tags($tag, $min_tags);
 		}
 		/* start */
 		qa_set_template('qp-quickeditcat-page');
@@ -255,30 +337,30 @@ if (
 			LIMIT #,#
 ', $start, $pagesize);
 
-		// initiate output string
-		$tagtable = '<table class="tagtable" id="quickedittable"> <thead> <tr> <th>No.</th><th>'.qa_lang_html('q2apro_quickedit_lang/th_postid').'</th> <th>Answer</th><th>'.qa_lang_html('q2apro_quickedit_lang/th_questiontitle').'</th><th>'.qa_lang_html('q2apro_quickedit_lang/th_postcategory').'</th> <th>'.qa_lang_html('q2apro_quickedit_lang/th_posttags').'</th> </tr></thead>';
-		$maxlength = qa_opt('mouseover_content_max_len'); // 480
+// initiate output string
+$tagtable = '<table class="tagtable" id="quickedittable"> <thead> <tr> <th>No.</th><th>'.qa_lang_html('q2apro_quickedit_lang/th_postid').'</th> <th>Answer</th><th>'.qa_lang_html('q2apro_quickedit_lang/th_questiontitle').'</th><th>'.qa_lang_html('q2apro_quickedit_lang/th_postcategory').'</th> <th>'.qa_lang_html('q2apro_quickedit_lang/th_posttags').'</th> </tr></thead>';
+$maxlength = qa_opt('mouseover_content_max_len'); // 480
 
-		require_once QA_INCLUDE_DIR.'qa-util-string.php'; // for qa_shorten_string_line()
-		$blockwordspreg=qa_get_block_words_preg();
-		$results = qa_db_read_all_assoc($queryAllPosts);
-		//usort($results, array("q2apro_quickeditcat", "mysorttitle"));
-		usort($results, array("q2apro_quickedit", "mysorttitle"));
-		//usort($results, "mysorttitle");
-		//	print_r($results);
-		//	exit;
-		{
+require_once QA_INCLUDE_DIR.'qa-util-string.php'; // for qa_shorten_string_line()
+$blockwordspreg=qa_get_block_words_preg();
+$results = qa_db_read_all_assoc($queryAllPosts);
+//usort($results, array("q2apro_quickeditcat", "mysorttitle"));
+usort($results, array("q2apro_quickedit", "mysorttitle"));
+//usort($results, "mysorttitle");
+//	print_r($results);
+//	exit;
+{
 
 
-		}
-		$count = count($results); // items total
-		$qa_content['page_links'] = qa_html_page_links(qa_request(), $start, $pagesize, $count, true); // last parameter is prevnext
-		$rowcnt = 0;
-		foreach($results as $row) {
-			//while ( ($row = qa_db_read_one_assoc($queryAllPosts,true)) !== null ) {
-			$text=qa_viewer_text($row['content'], $row['format'], array('blockwordspreg' => $blockwordspreg));
-			$contentPreview = $row['title'].". ".qa_html(qa_shorten_string_line($text, $maxlength));
-			$tagtable .= '
+}
+$count = count($results); // items total
+$qa_content['page_links'] = qa_html_page_links(qa_request(), $start, $pagesize, $count, true); // last parameter is prevnext
+$rowcnt = 0;
+foreach($results as $row) {
+	//while ( ($row = qa_db_read_one_assoc($queryAllPosts,true)) !== null ) {
+	$text=qa_viewer_text($row['content'], $row['format'], array('blockwordspreg' => $blockwordspreg));
+	$contentPreview = $row['title'].". ".qa_html(qa_shorten_string_line($text, $maxlength));
+	$tagtable .= '
 
 				<tr data-original="'.$row['postid'].'">
 				<td>'.++$rowcnt.'</td>
@@ -298,17 +380,17 @@ if (
 				<span id="tag_edit_hints_'.$row['postid'].'"></span></div>
 				</td>
 				</tr>';
-		}
-		$tagtable .= "</table>";
+}
+$tagtable .= "</table>";
 
-		// output into theme
-		//$qa_content['custom'.++$c]='<p style="font-size:14px;">Click on the post tags to edit them!</p>';
-		$qa_content['custom'.++$c]='<p>'.qa_lang_html('q2apro_quickedit_lang/edit_hint').'</p>';
-		$qa_content['custom'.++$c]='<p>'.qa_lang_html('q2apro_quickedit_lang/edit_hint_q').'</p>';
-		$qa_content['custom'.++$c]= $tagtable;
+// output into theme
+//$qa_content['custom'.++$c]='<p style="font-size:14px;">Click on the post tags to edit them!</p>';
+$qa_content['custom'.++$c]='<p>'.qa_lang_html('q2apro_quickedit_lang/edit_hint').'</p>';
+$qa_content['custom'.++$c]='<p>'.qa_lang_html('q2apro_quickedit_lang/edit_hint_q').'</p>';
+$qa_content['custom'.++$c]= $tagtable;
 
 
-		return $qa_content;
+return $qa_content;
 	}
 
 };

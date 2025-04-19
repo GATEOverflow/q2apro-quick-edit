@@ -1,0 +1,84 @@
+
+			.qa-sidepanel {
+			display:none;
+	}
+	.qa-main {
+	width:100%;
+	}
+	table.tagtable td{
+	width: fit-content;
+
+	}
+	table.tagtable {
+	width:100%;
+	background:#EEE;
+	margin:30px 0 15px;
+	text-align:left;
+	border-collapse:collapse;
+	}
+	table.tagtable th {
+	padding:4px;
+	background:#cfc;
+	border:1px solid #CCC;
+	text-align:center;
+	}
+	table.tagtable tr:nth-child(even){
+	background:#EEF;
+	}
+	table.tagtable tr:nth-child(odd){
+	background:#F5F5F5;
+	}
+	table.tagtable tr:hover {
+	background:#FFD;
+	}
+	table.tagtable th:nth-child(1), table.tagtable td:nth-child(1) {
+	width:20px;
+	text-align:center;
+	}
+	.tagtable td {
+	border:1px solid #CCC;
+	padding:1px 10px;
+	line-height:25px;
+	}
+	table.tagtable td a { 
+	font-size:12px;
+	}
+	input.post_title {
+	width:180px!important;
+	}
+	input.post_answer {
+	width:100px!important;
+	}
+	input.post_title, input.post_tags, input.post_answer, .inputdefault {
+	width:100%;
+	border:1px solid transparent;
+	padding:3px;
+	background:transparent;
+	}
+	input.post_title:focus, input.post_tags:focus, input.post_answer:focus, .inputactive {
+	background:#FFF !important;
+	box-shadow:0 0 2px #7AF
+	}
+	.post_title_td, .post_tags_td, .post_answer_td {
+	position:relative;
+	}
+	.sendr,.sendrOff {
+	padding:3px 10px;
+	background:#FC0;
+	border:1px solid #FEE;
+	border-radius:2px;
+	position:absolute;
+	right:-77px;
+	top:-5px;
+	color:#123;
+	cursor:pointer;
+	}
+	.sendrOff {
+	text-decoration:none !important;
+	}
+	.post_answer_td a.sendr, .post_answer_td a.sendrOff,.post_title_td a.sendr, .post_title_td a.sendrOff {
+	position: initial;
+	display: block;
+	width: fit-content;
+	}
+
