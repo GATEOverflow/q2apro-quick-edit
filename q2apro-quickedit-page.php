@@ -69,12 +69,26 @@ class q2apro_quickedit {
 		$mintags = 1;
 		$tags=qa_db_single_select($this->tags_selectspec($mintags));
 		$fields = array();
+		$selected_tags = qa_post_array('tagstring'); // Get selected tags from POST
+		$selected_tags = is_array($selected_tags) ? $selected_tags : array();
+
 		$fields[] = array(
+			'label' => 'Tags to fetch Post-IDs',
+			'type' => 'custom',
+			'html' => '<select id="tag_selector" name="tagstring[]" class="col" multiple size="25" onchange="dosubmit(this)">'
+			. implode('', array_map(function ($tag) use ($selected_tags) {
+				$selected = in_array($tag, $selected_tags) ? ' selected' : '';
+				return '<option value="' . htmlspecialchars($tag) . '"' . $selected . '>' . htmlspecialchars($tag) . '</option>';
+			}, $tags)) .
+			'</select>',
+		);
+
+/*		$fields[] = array(
 			'label' => 'Tag to fetch Post-IDs',
-			'type'=>'select',
+			'type'=>'custom',
 			'tags' => "id='tag_selector' name='tagstring' class='col' onchange='dosubmit(this)'",
 			'options' => $tags,
-		);
+);*/
 		$userlevel = qa_get_logged_in_level();
 		if($userlevel >= QA_USER_LEVEL_SUPER) {
 			$fields[] = array(
@@ -146,26 +160,28 @@ class q2apro_quickedit {
 			);
 			//file_put_contents("/tmp/openaiout.txt", "quickedit ".$title."..".$newtags, FILE_APPEND | LOCK_EX);
 			qa_post_set_content($postid, null, null, null, $newtags, null,null, qa_get_logged_in_userid(), null, null);
-			
+
 			$query=" select postid from ^posts where postid in (select postid from ^posts where categoryid is null or categoryid in(select categoryid from ^categories where title like 'Others' or title like 'Unknown Category' or title like 'new' )) and postid = #";// and categoryid =6";
 			$result = qa_db_read_one_value(qa_db_query_sub($query, $postid), true);
 			if($result) {
 				//echo $result;
 				$newtag = qa_tag_review_call_openai($message, true);//update category
 				if($newtag) {
-				$newtag = preg_replace('/^.*?:/', '', $newtag);
-				//echo($newtag);
-				$query = "select categoryid from ^categories where tags = $";
-				$categoryid = qa_db_read_one_value(qa_db_query_sub($query, $newtag), true);
-				if($categoryid) {
-					//echo $categoryid;
-					qa_post_set_category($postid, $categoryid,qa_get_logged_in_userid());
-			
-				}
+					$newtag = preg_replace('/^.*?:/', '', $newtag);
+					//echo($newtag);
+					$query = "select categoryid from ^categories where tags = $";
+					$categoryid = qa_db_read_one_value(qa_db_query_sub($query, $newtag), true);
+					if($categoryid) {
+						//echo $categoryid;
+						qa_post_set_category($postid, $categoryid,qa_get_logged_in_userid());
+						return 1;
+
+					}
 				}
 			}
-			
+
 		}
+		return 0;
 	}
 
 	function openai_process_tags($tag, $min_tags) {
@@ -181,9 +197,8 @@ class q2apro_quickedit {
 			$content = $post['content'];
 			$title = $post['title'];
 			$tags = $post['tags'];
-			$this-> openai_process_post($postid, $content, $title, $tags);
+			$count += $this-> openai_process_post($postid, $content, $title, $tags);
 			sleep(1);
-			$count++;
 			//if($count > 10) break;
 		}
 		return $count;
@@ -239,56 +254,56 @@ class q2apro_quickedit {
 		$qa_content=qa_content_prepare();
 		if (qa_clicked('changesubmit'))
 		{
-			$tag = qa_post_text('tagstring');
-			//			echo "tag = ".$tag;
-			$filter = ' true ';
-			if(!$force)
-			{
-				$filter=" postid in (select postid from ^posts where categoryid is null or categoryid in(select categoryid from ^categories where title like 'Others' or title like 'Unknown Category' or title like 'new' ))";// and categoryid =6";
-			}
-			$query = "select postid from ^posttags where wordid = (select wordid from ^words WHERE word = '".qa_strtolower($tag)."') and $filter";
-			$result = qa_db_query_sub($query);
-			$postids = qa_db_read_all_values($result, true);
-			$count = 0;
-			foreach ($postids as $postid)
-			{
-
-				$updated = false;
-				$query="select tags from ^posts where postid = #";
-				$result = qa_db_query_sub($query, $postid);
-				$fulltags = qa_db_read_one_value($result, true);
-				$fulltagsarray = qa_tagstring_to_tags($fulltags);
-				$userid = qa_get_logged_in_userid();
-				foreach ($fulltagsarray as $tagvalue)
+			$tags = qa_post_array('tagstring');
+			foreach($tags as $tag) {
+				//			echo "tag = ".$tag;
+				$filter = ' true ';
+				if(!$force)
 				{
-					if($tagvalue === $tag) continue;//skip the selection one. 
-
-					$query = "select categoryid from ^categories where tags like $";
-					$result = qa_db_query_sub($query, $tagvalue);
-					$category = qa_db_read_one_value($result, true);
-					if(!$category) continue;
-					$updated = true;
-					//echo "($postid, $category, $tagvalue, $userid)";
-					//qa_post_set_category($postid, $category);
-					qa_post_set_category($postid, $category, $userid);
-					break;
+					$filter=" postid in (select postid from ^posts where categoryid is null or categoryid in(select categoryid from ^categories where title like 'Others' or title like 'Unknown Category' or title like 'new' ))";// and categoryid =6";
 				}
-				if($updated) $count++;
-				//	break;
+				$query = "select postid from ^posttags where wordid = (select wordid from ^words WHERE word = '".qa_strtolower($tag)."') and $filter";
+				$result = qa_db_query_sub($query);
+				$postids = qa_db_read_all_values($result, true);
+				$count = 0;
+				foreach ($postids as $postid)
+				{
 
+					$updated = false;
+					$query="select tags from ^posts where postid = #";
+					$result = qa_db_query_sub($query, $postid);
+					$fulltags = qa_db_read_one_value($result, true);
+					$fulltagsarray = qa_tagstring_to_tags($fulltags);
+					$userid = qa_get_logged_in_userid();
+					foreach ($fulltagsarray as $tagvalue)
+					{
+						if($tagvalue === $tag) continue;//skip the selection one. 
+
+						$query = "select categoryid from ^categories where tags like $";
+						$result = qa_db_query_sub($query, $tagvalue);
+						$category = qa_db_read_one_value($result, true);
+						if(!$category) continue;
+						$updated = true;
+						//echo "($postid, $category, $tagvalue, $userid)";
+						//qa_post_set_category($postid, $category);
+						qa_post_set_category($postid, $category, $userid);
+						break;
+					}
+					if($updated) $count++;
+					//	break;
+
+				}
+				if($ocr) {
+					$this -> process_submit_ocr($tag);
+				}
+				if($openai_tagging) {
+					//$tag = qa_post_text('tagstring');
+					$min_tags = qa_post_text('min_tags');
+					if($tag)
+						$count += $this -> openai_process_tags($tag, $min_tags);
+				}
+				$qa_content['custom'.++$c] = "<p>$count posts have been categorized successfully</p>";
 			}
-			$qa_content['custom'.++$c] = "<p>$count posts have been categorized successfully</p>";
-		}
-		if($ocr) {
-			$tag = qa_post_text('tagstring');
-			if($tag)
-				$this -> process_submit_ocr($tag);
-		}
-		if($openai_tagging) {
-			$tag = qa_post_text('tagstring');
-			$min_tags = qa_post_text('min_tags');
-			if($tag)
-				$this -> openai_process_tags($tag, $min_tags);
 		}
 		/* start */
 		qa_set_template('qp-quickeditcat-page');
@@ -313,17 +328,32 @@ class q2apro_quickedit {
 		$start = (int)qa_get('start'); // gets start value from URL
 		$pagesize = 500; // items per page
 		$tagstring='';
-		if(isset($_GET['tagfilter']))
-			$tagfilter = $_GET['tagfilter'];
-		$tagfilter = qa_post_text('tagstring');
-		if($tagfilter) {
-			$tagstring = " and a.tags like '%".$tagfilter."%' ";
-			$tagstring = " and a.postid in (select postid from ^posttags where wordid = (select wordid from ^words WHERE word = '$tagfilter' and word = '".qa_strtolower($tagfilter)."'))";
+
+		$tagfilters = qa_post_array('tagstring'); // Multiselect input
+
+		$tagstring = ''; // Default
+
+		if (!empty($tagfilters)) {
+			$tagconditions = array();
+
+			foreach ($tagfilters as $tagfilter) {
+				$tag = qa_strtolower(trim($tagfilter));
+				$tag = qa_db_escape_string($tag); // Sanitize to prevent SQL injection
+
+				$tagconditions[] = "a.postid IN (
+					SELECT postid FROM ^posttags 
+					WHERE wordid = (
+						SELECT wordid FROM ^words 
+						WHERE word = '$tag'
+	    )
+	)";
+			}
+
+			// Join with OR to match any of the selected tags
+			$tagstring = ' AND (' . implode(' OR ', $tagconditions) . ')';
 		}
-		//echo $tagstring;
-		//exit;
-		//else		$tagstring .= " and a.tags NOT LIKE ''"; 
-		#$tagstring .= " and a.categoryid = 6";
+
+
 
 		$qa_content['form'] =  $this -> tagform();
 
